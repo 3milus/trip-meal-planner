@@ -322,6 +322,42 @@
       .form-row { grid-template-columns: 1fr; }
       .trip-detail-meta { gap: 8px; }
     }
+
+    /* ── Meal remove button ─────────────────── */
+    .meal-remove-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--gray-400); font-size: .9rem;
+      padding: 2px 6px; border-radius: 4px;
+      margin-left: auto;
+      transition: all .15s; line-height: 1;
+    }
+    .meal-remove-btn:hover { background: #fee2e2; color: #dc2626; }
+
+    /* ── Grocery edit ───────────────────────── */
+    .grocery-edit-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 0; border-bottom: 1px solid var(--gray-100);
+    }
+    .grocery-edit-row:last-child { border-bottom: none; }
+    .btn-edit {
+      background: none; border: none; cursor: pointer;
+      color: var(--gray-400); font-size: .85rem;
+      padding: 2px 5px; border-radius: 4px;
+      transition: all .15s; line-height: 1;
+    }
+    .btn-edit:hover { background: var(--gray-100); color: var(--gray-900); }
+
+    /* ── Add meal button ────────────────────── */
+    .add-meal-btn {
+      display: flex; align-items: center; justify-content: center;
+      gap: 6px; width: 100%;
+      padding: 10px; margin-top: 4px;
+      background: var(--gray-50); border: 1.5px dashed var(--gray-200);
+      border-radius: var(--r-lg); cursor: pointer;
+      font-size: .85rem; color: var(--gray-600);
+      font-family: inherit; transition: all .15s;
+    }
+    .add-meal-btn:hover { background: var(--green-light); border-color: var(--green); color: var(--green); }
   </style>
 </head>
 <body>
@@ -397,6 +433,35 @@
   </div>
 </div>
 
+<!-- ── Modal: Add Meal ───────────────────────────────────── -->
+<div id="modal-add-meal" class="modal-overlay">
+  <div class="modal">
+    <h2>Add Meal</h2>
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="add-meal-date">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Type</label>
+        <select id="add-meal-type">
+          <option value="Breakfast">Breakfast</option>
+          <option value="Lunch">Lunch</option>
+          <option value="Dinner" selected>Dinner</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Time</label>
+        <input type="time" id="add-meal-time" value="18:00">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeAddMealModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="addCustomMeal()">Add Meal</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── Firebase init ──────────────────────────────────────────
 let db;
@@ -424,6 +489,12 @@ const h = s => String(s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;')
   .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const localDateStr = d => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dy = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dy}`;
+};
 
 // ── Local trip ID tracking ─────────────────────────────────
 function getLocalIds() {
@@ -445,7 +516,7 @@ const MEAL_DEFS = [
   { type: 'Dinner',    hour: 18 },
 ];
 
-function computeMeals(startIso, endIso) {
+function computeMeals(startIso, endIso, removedMeals = [], customMeals = []) {
   const start = new Date(startIso);
   const end   = new Date(endIso);
   const meals = [];
@@ -455,12 +526,19 @@ function computeMeals(startIso, endIso) {
     for (const def of MEAL_DEFS) {
       const mt = new Date(day); mt.setHours(def.hour, 0, 0, 0);
       if (mt >= start && mt <= end) {
-        const date = day.toISOString().split('T')[0];
-        meals.push({ date, type: def.type, hour: def.hour, key: `${date}_${def.type}` });
+        const date = localDateStr(day);
+        const key  = `${date}_${def.type}`;
+        if (!removedMeals.includes(key)) {
+          meals.push({ date, type: def.type, hour: def.hour, timeStr: `${String(def.hour).padStart(2,'0')}:00`, key });
+        }
       }
     }
     day.setDate(day.getDate() + 1);
   }
+  for (const cm of customMeals) {
+    if (!removedMeals.includes(cm.key)) meals.push(cm);
+  }
+  meals.sort((a, b) => a.date !== b.date ? a.date.localeCompare(b.date) : a.hour - b.hour);
   return meals;
 }
 
@@ -530,6 +608,7 @@ function subscribeToTrip(id) {
   firestoreUnsub = db.collection('trips').doc(id).onSnapshot(doc => {
     if (!doc.exists) { alert('Trip not found.'); navigate('/'); return; }
     const trip = { id: doc.id, ...doc.data() };
+    lastTripData = trip;
     document.getElementById('header-title').textContent = trip.name;
     renderTripDetail(trip);
   }, err => {
@@ -541,7 +620,7 @@ function subscribeToTrip(id) {
 function openModal() {
   const today    = new Date();
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-  const fmt = d => d.toISOString().split('T')[0];
+  const fmt = d => localDateStr(d);
   document.getElementById('new-trip-start-date').value = fmt(today);
   document.getElementById('new-trip-end-date').value   = fmt(tomorrow);
   document.getElementById('new-trip-name').value       = '';
@@ -571,6 +650,7 @@ async function createTrip() {
     const ref = await db.collection('trips').add({
       name, startDatetime: start, endDatetime: end,
       participants: [], mealData: {},
+      removedMeals: [], customMeals: [],
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     closeModal();
@@ -589,6 +669,48 @@ async function deleteTrip(id) {
     removeLocalId(id);
     navigate('/');
   } catch(e) { alert(e.message); }
+}
+
+// ── Meal add / remove ──────────────────────────────────────
+async function removeMeal(key) {
+  try {
+    await db.collection('trips').doc(currentTripId).update({
+      removedMeals: firebase.firestore.FieldValue.arrayUnion(key)
+    });
+  } catch(e) { alert(e.message); }
+}
+
+function openAddMealModal() {
+  document.getElementById('add-meal-date').value = localDateStr(new Date());
+  document.getElementById('add-meal-type').value = 'Dinner';
+  document.getElementById('add-meal-time').value = '18:00';
+  document.getElementById('modal-add-meal').classList.add('open');
+  setTimeout(() => document.getElementById('add-meal-date').focus(), 50);
+}
+
+function closeAddMealModal() {
+  document.getElementById('modal-add-meal').classList.remove('open');
+}
+
+async function addCustomMeal() {
+  const date    = document.getElementById('add-meal-date').value;
+  const type    = document.getElementById('add-meal-type').value;
+  const timeStr = document.getElementById('add-meal-time').value || '18:00';
+  if (!date) { alert('Select a date.'); return; }
+  const hour = parseInt(timeStr.split(':')[0], 10);
+  const key  = `${date}_${type}_${uid()}`;
+  const btn  = document.querySelector('#modal-add-meal .btn-primary');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    await db.collection('trips').doc(currentTripId).update({
+      customMeals: firebase.firestore.FieldValue.arrayUnion({ date, type, hour, timeStr, key })
+    });
+    closeAddMealModal();
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Add Meal';
+  }
 }
 
 // ── Participants ───────────────────────────────────────────
@@ -612,6 +734,9 @@ async function removeParticipant(name) {
     const updates  = { participants: firebase.firestore.FieldValue.arrayRemove(name) };
     for (const [key, md] of Object.entries(mealData)) {
       if (md.cook === name) updates[`mealData.${key}.cook`] = null;
+      if (md.cooks?.includes(name)) {
+        updates[`mealData.${key}.cooks`] = md.cooks.filter(c => c !== name);
+      }
       if (md.joiners?.includes(name)) {
         updates[`mealData.${key}.joiners`] = md.joiners.filter(j => j !== name);
       }
@@ -621,14 +746,22 @@ async function removeParticipant(name) {
 }
 
 // ── Meal assignments ───────────────────────────────────────
-async function setCook(mealKey, cook) {
-  const updates = { [`mealData.${mealKey}.cook`]: cook || null };
-  if (cook) {
+async function toggleCook(mealKey, name) {
+  try {
     const snap    = await db.collection('trips').doc(currentTripId).get();
-    const joiners = snap.data()?.mealData?.[mealKey]?.joiners || [];
-    if (!joiners.includes(cook)) updates[`mealData.${mealKey}.joiners`] = [...joiners, cook];
-  }
-  await db.collection('trips').doc(currentTripId).update(updates).catch(e => alert(e.message));
+    const md      = snap.data()?.mealData?.[mealKey] || {};
+    const cooks   = md.cooks ?? (md.cook ? [md.cook] : []);
+    const next    = cooks.includes(name) ? cooks.filter(c => c !== name) : [...cooks, name];
+    const updates = {
+      [`mealData.${mealKey}.cooks`]: next,
+      [`mealData.${mealKey}.cook`]: next[0] ?? null,
+    };
+    const joiners = md.joiners || [];
+    if (!cooks.includes(name) && !joiners.includes(name)) {
+      updates[`mealData.${mealKey}.joiners`] = [...joiners, name];
+    }
+    await db.collection('trips').doc(currentTripId).update(updates);
+  } catch(e) { alert(e.message); }
 }
 
 async function toggleJoiner(mealKey, name) {
@@ -641,6 +774,36 @@ async function toggleJoiner(mealKey, name) {
 }
 
 // ── Groceries ──────────────────────────────────────────────
+let editingGrocery = null; // { mealKey, id }
+let lastTripData   = null;
+
+function editGrocery(mealKey, id) {
+  editingGrocery = { mealKey, id };
+  if (lastTripData) renderTripDetail(lastTripData);
+}
+
+function cancelEditGrocery() {
+  editingGrocery = null;
+  if (lastTripData) renderTripDetail(lastTripData);
+}
+
+async function saveGrocery(mealKey, id) {
+  const nameEl = document.getElementById(`ge-name-${id}`);
+  const qtyEl  = document.getElementById(`ge-qty-${id}`);
+  const item   = nameEl?.value.trim();
+  if (!item) { alert('Item name cannot be empty.'); return; }
+  try {
+    const snap      = await db.collection('trips').doc(currentTripId).get();
+    const groceries = (snap.data()?.mealData?.[mealKey]?.groceries || []).map(g =>
+      g.id === id ? { ...g, item, quantity: qtyEl?.value.trim() || '' } : g
+    );
+    await db.collection('trips').doc(currentTripId).update({
+      [`mealData.${mealKey}.groceries`]: groceries
+    });
+    editingGrocery = null;
+  } catch(e) { alert(e.message); }
+}
+
 async function addGrocery(mealKey) {
   const nameEl = document.getElementById(`g-name-${mealKey}`);
   const qtyEl  = document.getElementById(`g-qty-${mealKey}`);
@@ -705,8 +868,8 @@ function renderTripsList(trips) {
   }
   const fmtD = d => new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric' });
   container.innerHTML = trips.map(trip => {
-    const meals    = computeMeals(trip.startDatetime, trip.endDatetime);
-    const assigned = Object.values(trip.mealData || {}).filter(m => m.cook).length;
+    const meals    = computeMeals(trip.startDatetime, trip.endDatetime, trip.removedMeals || [], trip.customMeals || []);
+    const assigned = Object.values(trip.mealData || {}).filter(m => (m.cooks?.length || m.cook)).length;
     return `
       <div class="trip-card" onclick="navigate('/trip/${trip.id}')">
         <div>
@@ -729,7 +892,8 @@ function renderTripDetail(trip) {
   const focusId   = document.activeElement?.id;
   const focusVal  = document.activeElement?.value;
 
-  const meals   = computeMeals(trip.startDatetime, trip.endDatetime);
+  lastTripData  = trip;
+  const meals   = computeMeals(trip.startDatetime, trip.endDatetime, trip.removedMeals || [], trip.customMeals || []);
   const fmtDT   = iso => {
     const d = new Date(iso);
     return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })
@@ -799,19 +963,22 @@ function renderTripDetail(trip) {
       const isOpen = openMeals.has(meal.key);
       const icon   = meal.type === 'Breakfast' ? '🌅' : meal.type === 'Lunch' ? '☀️' : '🌙';
 
+      const mealCooks = md.cooks ?? (md.cook ? [md.cook] : []);
       const summaryParts = [];
-      if (md.cook)                        summaryParts.push(`👨‍🍳 ${h(md.cook)}`);
+      if (mealCooks.length)               summaryParts.push(`👨‍🍳 ${mealCooks.length}`);
       if ((md.joiners||[]).length)        summaryParts.push(`${md.joiners.length} joining`);
       if ((md.groceries||[]).length)      summaryParts.push(`${md.groceries.length} item${md.groceries.length !== 1 ? 's' : ''}`);
       const summary = summaryParts.join(' · ');
 
+      const timeDisplay = meal.timeStr || `${String(meal.hour).padStart(2,'0')}:00`;
       html += `
         <div class="meal-card">
           <div class="meal-header" onclick="toggleMeal('${meal.key}')">
             <span>${icon}</span>
             <span class="badge badge-${meal.type.toLowerCase()}">${meal.type}</span>
-            <span class="meal-time">${String(meal.hour).padStart(2,'0')}:00</span>
+            <span class="meal-time">${timeDisplay}</span>
             <span class="meal-summary">${summary}</span>
+            <button class="meal-remove-btn" onclick="event.stopPropagation();removeMeal('${meal.key}')" title="Remove meal">×</button>
             <span class="chevron ${isOpen ? 'open' : ''}" id="chev-${meal.key}">›</span>
           </div>
           <div class="meal-body ${isOpen ? 'open' : ''}" data-key="${meal.key}" id="body-${meal.key}">
@@ -819,20 +986,21 @@ function renderTripDetail(trip) {
               ? `<p class="muted" style="margin-top:13px">Add participants above to assign this meal.</p>`
               : `
               <div class="meal-section">
-                <div class="section-label">Cook</div>
-                <select onchange="setCook('${meal.key}', this.value)">
-                  <option value="">— Unassigned —</option>
-                  ${(trip.participants||[]).map(p =>
-                    `<option value="${h(p)}" ${md.cook === p ? 'selected' : ''}>${h(p)}</option>`
-                  ).join('')}
-                </select>
+                <div class="section-label">Cook (${mealCooks.length})</div>
+                <div class="pills">
+                  ${(trip.participants||[]).map(p => `
+                    <button class="pill ${mealCooks.includes(p) ? 'active' : ''}"
+                      data-meal-key="${meal.key}" data-name="${h(p)}" data-role="cook">
+                      ${h(p)}
+                    </button>`).join('')}
+                </div>
               </div>
               <div class="meal-section">
                 <div class="section-label">Who's joining (${(md.joiners||[]).length})</div>
                 <div class="pills">
                   ${(trip.participants||[]).map(p => `
                     <button class="pill ${(md.joiners||[]).includes(p) ? 'active' : ''}"
-                      data-meal-key="${meal.key}" data-name="${h(p)}">
+                      data-meal-key="${meal.key}" data-name="${h(p)}" data-role="joiner">
                       ${h(p)}
                     </button>`).join('')}
                 </div>
@@ -842,12 +1010,29 @@ function renderTripDetail(trip) {
               <div class="section-label">Groceries</div>
               ${(md.groceries||[]).length > 0 ? `
                 <ul class="grocery-list">
-                  ${(md.groceries||[]).map(g => `
-                    <li class="grocery-item">
-                      <span class="g-name">${h(g.item)}</span>
-                      ${g.quantity ? `<span class="g-qty">${h(g.quantity)}</span>` : ''}
-                      <button class="btn-x" onclick="removeGrocery('${meal.key}','${g.id}')" title="Remove">✕</button>
-                    </li>`).join('')}
+                  ${(md.groceries||[]).map(g => {
+                    const isEditing = editingGrocery && editingGrocery.mealKey === meal.key && editingGrocery.id === g.id;
+                    if (isEditing) {
+                      return `
+                        <li class="grocery-edit-row">
+                          <input id="ge-name-${g.id}" type="text" value="${h(g.item)}"
+                            class="input-sm input-flex"
+                            onkeydown="if(event.key==='Enter')saveGrocery('${meal.key}','${g.id}');if(event.key==='Escape')cancelEditGrocery()">
+                          <input id="ge-qty-${g.id}" type="text" value="${h(g.quantity||'')}"
+                            placeholder="Qty" class="input-sm input-qty"
+                            onkeydown="if(event.key==='Enter')saveGrocery('${meal.key}','${g.id}');if(event.key==='Escape')cancelEditGrocery()">
+                          <button class="btn btn-primary btn-sm" onclick="saveGrocery('${meal.key}','${g.id}')">Save</button>
+                          <button class="btn btn-secondary btn-sm" onclick="cancelEditGrocery()">✕</button>
+                        </li>`;
+                    }
+                    return `
+                      <li class="grocery-item">
+                        <span class="g-name">${h(g.item)}</span>
+                        ${g.quantity ? `<span class="g-qty">${h(g.quantity)}</span>` : ''}
+                        <button class="btn-edit" onclick="editGrocery('${meal.key}','${g.id}')" title="Edit">✎</button>
+                        <button class="btn-x" onclick="removeGrocery('${meal.key}','${g.id}')" title="Remove">✕</button>
+                      </li>`;
+                  }).join('')}
                 </ul>` : ''}
               <div class="add-row" style="margin-top:8px">
                 <input id="g-name-${meal.key}" type="text" placeholder="Item name"
@@ -864,6 +1049,8 @@ function renderTripDetail(trip) {
     }
     html += `</div>`;
   }
+
+  html += `<button class="add-meal-btn" onclick="openAddMealModal()">+ Add meal</button>`;
 
   document.getElementById('meals-section').innerHTML = html;
   restoreFocus(focusId, focusVal);
@@ -886,9 +1073,16 @@ document.addEventListener('click', e => {
   if (removeBtn) { removeParticipant(removeBtn.dataset.name); return; }
 
   const pill = e.target.closest('.pill[data-meal-key]');
-  if (pill) { toggleJoiner(pill.dataset.mealKey, pill.dataset.name); return; }
+  if (pill) {
+    if (pill.dataset.role === 'cook') toggleCook(pill.dataset.mealKey, pill.dataset.name);
+    else toggleJoiner(pill.dataset.mealKey, pill.dataset.name);
+    return;
+  }
 
-  if (e.target.classList.contains('modal-overlay')) closeModal();
+  if (e.target.classList.contains('modal-overlay')) {
+    if (e.target.id === 'modal-add-meal') closeAddMealModal();
+    else closeModal();
+  }
 });
 
 // ── Boot ───────────────────────────────────────────────────
