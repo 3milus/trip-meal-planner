@@ -347,6 +347,56 @@
     }
     .btn-edit:hover { background: var(--gray-100); color: var(--gray-900); }
 
+    /* ── Overview card ─────────────────────── */
+    .overview-type-block {
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--gray-100);
+    }
+    .overview-type-block:last-child { border-bottom: none; margin-bottom: 0; }
+    .overview-type-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .paid-row {
+      display: flex; align-items: center; gap: 6px;
+      font-size: .82rem; color: var(--gray-600);
+    }
+    .paid-input {
+      width: 80px !important;
+      padding: 4px 8px !important;
+      font-size: .85rem !important;
+      text-align: right;
+    }
+    /* ── Split table ────────────────────────── */
+    .split-table-wrap { overflow-x: auto; margin-top: 4px; }
+    .split-table {
+      width: 100%; border-collapse: collapse;
+      font-size: .83rem;
+    }
+    .split-table th {
+      text-align: left; font-weight: 600;
+      color: var(--gray-600); font-size: .73rem;
+      text-transform: uppercase; letter-spacing: .04em;
+      padding: 5px 8px; border-bottom: 1.5px solid var(--gray-200);
+      white-space: nowrap;
+    }
+    .split-table td {
+      padding: 7px 8px; border-bottom: 1px solid var(--gray-100);
+      vertical-align: middle;
+    }
+    .split-table tr:last-child td { border-bottom: none; }
+    .split-name { font-weight: 500; }
+    .split-cell { text-align: right; }
+    .split-pct  { font-size: .78rem; color: var(--gray-600); }
+    .split-amt  { font-size: .85rem; font-weight: 500; display: block; }
+    .split-total-cell { font-weight: 600; text-align: right; }
+    .coverage-note {
+      font-size: .75rem; color: var(--gray-400);
+      margin-top: 8px; text-align: right;
+    }
+
     /* ── Add meal button ────────────────────── */
     .add-meal-btn {
       display: flex; align-items: center; justify-content: center;
@@ -394,6 +444,7 @@
     <div id="trip-info-card" class="card"></div>
     <div id="participants-card" class="card"></div>
     <div id="meals-section"></div>
+    <div id="overview-card" class="card" style="display:none"></div>
   </div>
 </div>
 
@@ -489,6 +540,32 @@ const h = s => String(s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;')
   .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+function combineQuantity(quantities) {
+  const q = quantities.map(s => String(s).trim()).filter(Boolean);
+  if (!q.length) return '';
+  // Pure numbers
+  if (q.every(s => /^[\d.]+$/.test(s))) {
+    const sum = q.reduce((a, s) => a + parseFloat(s), 0);
+    return String(Math.round(sum * 1000) / 1000);
+  }
+  // "number unit" pattern (e.g. "2 kg", "500g", "1.5 L")
+  const parsed = q.map(s => { const m = s.match(/^([\d.,]+)\s*(.*)$/); return m ? { n: parseFloat(m[1].replace(',','.')), unit: m[2].trim().toLowerCase() } : null; });
+  if (parsed.every(Boolean)) {
+    const units = new Set(parsed.map(p => p.unit));
+    if (units.size === 1) {
+      const unit  = [...units][0];
+      const sum   = Math.round(parsed.reduce((a, p) => a + p.n, 0) * 1000) / 1000;
+      return unit ? `${sum} ${unit}` : String(sum);
+    }
+  }
+  return q.join(' + ');
+}
+
+function fmtAmt(n) {
+  return n % 1 === 0 ? String(n) : n.toFixed(2);
+}
+
 const localDateStr = d => {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -650,7 +727,7 @@ async function createTrip() {
     const ref = await db.collection('trips').add({
       name, startDatetime: start, endDatetime: end,
       participants: [], mealData: {},
-      removedMeals: [], customMeals: [],
+      removedMeals: [], customMeals: [], paidAmounts: {},
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     closeModal();
@@ -711,6 +788,16 @@ async function addCustomMeal() {
   } finally {
     btn.disabled = false; btn.textContent = 'Add Meal';
   }
+}
+
+// ── Paid amounts ───────────────────────────────────────────
+async function setPaidAmount(type, value) {
+  const amount = parseFloat(value) || 0;
+  try {
+    await db.collection('trips').doc(currentTripId).update({
+      [`paidAmounts.${type}`]: amount
+    });
+  } catch(e) { alert(e.message); }
 }
 
 // ── Participants ───────────────────────────────────────────
@@ -1053,7 +1140,142 @@ function renderTripDetail(trip) {
   html += `<button class="add-meal-btn" onclick="openAddMealModal()">+ Add meal</button>`;
 
   document.getElementById('meals-section').innerHTML = html;
+  renderOverview(trip, meals);
   restoreFocus(focusId, focusVal);
+}
+
+// ── Render: Overview ──────────────────────────────────────
+function renderOverview(trip, meals) {
+  const el = document.getElementById('overview-card');
+  if (!el) return;
+
+  const mealData     = trip.mealData     || {};
+  const participants = trip.participants  || [];
+  const paidAmounts  = trip.paidAmounts  || {};
+  const TYPES        = ['Breakfast', 'Lunch', 'Dinner'];
+
+  // ── Build grocery aggregation per meal type ──
+  const grocMap = {}; // type → { itemKey → { item, quantities[] } }
+  for (const meal of meals) {
+    const groceries = mealData[meal.key]?.groceries || [];
+    if (!grocMap[meal.type]) grocMap[meal.type] = {};
+    for (const g of groceries) {
+      const k = g.item.trim().toLowerCase();
+      if (!grocMap[meal.type][k]) grocMap[meal.type][k] = { item: g.item, quantities: [] };
+      if (g.quantity) grocMap[meal.type][k].quantities.push(g.quantity);
+    }
+  }
+
+  // ── Build meal counts per type ──
+  const mealsByType = {};
+  for (const meal of meals) {
+    if (!mealsByType[meal.type]) mealsByType[meal.type] = [];
+    mealsByType[meal.type].push(meal);
+  }
+
+  const activeTypes = TYPES.filter(t => mealsByType[t]?.length > 0);
+  if (activeTypes.length === 0) { el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  // ── Participation fractions: person → type → (joined/total)/N ──
+  const N = participants.length;
+  // fraction[p][t] = (meals_joined / total_meals_of_type) / N
+  const fraction = {};
+  for (const p of participants) {
+    fraction[p] = {};
+    for (const t of activeTypes) {
+      const typeMeals = mealsByType[t] || [];
+      const joined = typeMeals.filter(m => (mealData[m.key]?.joiners || []).includes(p)).length;
+      fraction[p][t] = typeMeals.length > 0 ? (joined / typeMeals.length) / Math.max(N, 1) : 0;
+    }
+  }
+
+  let html = `<div class="section-header"><span class="section-title">📊 Overview</span></div>`;
+
+  // ── Grocery totals ──
+  html += `<div class="section-label" style="margin-bottom:10px">Grocery totals</div>`;
+
+  const typesWithGroceries = activeTypes.filter(t => grocMap[t] && Object.keys(grocMap[t]).length > 0);
+  if (typesWithGroceries.length === 0) {
+    html += `<p class="muted" style="margin-bottom:14px">No groceries added to any meal yet.</p>`;
+  } else {
+    for (const type of typesWithGroceries) {
+      const items = Object.values(grocMap[type]);
+      const paid  = paidAmounts[type] != null ? paidAmounts[type] : '';
+      html += `
+        <div class="overview-type-block">
+          <div class="overview-type-header">
+            <span class="badge badge-${type.toLowerCase()}">${type}</span>
+            <div class="paid-row">
+              <label>Paid:</label>
+              <input id="paid-${type}" type="number" class="paid-input" min="0" step="0.01"
+                value="${paid}" placeholder="0.00"
+                onblur="setPaidAmount('${type}', this.value)"
+                onkeydown="if(event.key==='Enter')this.blur()">
+            </div>
+          </div>
+          <ul class="grocery-list">
+            ${items.map(g => `
+              <li class="grocery-item">
+                <span class="g-name">${h(g.item)}</span>
+                ${g.quantities.length ? `<span class="g-qty">${h(combineQuantity(g.quantities))}</span>` : ''}
+              </li>`).join('')}
+          </ul>
+        </div>`;
+    }
+  }
+
+  // ── Cost split ──
+  if (N > 0) {
+    const hasPaid = activeTypes.some(t => parseFloat(paidAmounts[t]) > 0);
+    html += `<div class="section-label" style="margin-top:16px;margin-bottom:8px">Cost split</div>`;
+
+    const splitTypes = activeTypes; // only types that have meals
+    html += `<div class="split-table-wrap"><table class="split-table">
+      <thead><tr>
+        <th>Person</th>
+        ${splitTypes.map(t => `<th style="text-align:right">${t.slice(0,1)}${t.slice(1,3).toLowerCase()}</th>`).join('')}
+        ${hasPaid ? `<th style="text-align:right">Total</th>` : ''}
+      </tr></thead>
+      <tbody>`;
+
+    let coveredTotal = 0;
+    for (const p of participants) {
+      let personTotal = 0;
+      const cells = splitTypes.map(t => {
+        const frac = fraction[p][t] || 0;
+        const paid = parseFloat(paidAmounts[t]) || 0;
+        const owed = frac * paid;
+        personTotal += owed;
+        const pct = Math.round(frac * 100);
+        if (hasPaid && paid > 0) {
+          return `<td class="split-cell"><span class="split-pct">${pct}%</span><span class="split-amt">${fmtAmt(owed)}</span></td>`;
+        }
+        return `<td class="split-cell">${pct}%</td>`;
+      });
+      coveredTotal += personTotal;
+      html += `<tr>
+        <td class="split-name">${h(p)}</td>
+        ${cells.join('')}
+        ${hasPaid ? `<td class="split-total-cell">${fmtAmt(personTotal)}</td>` : ''}
+      </tr>`;
+    }
+
+    // Coverage note: total cost entered vs total assigned
+    if (hasPaid) {
+      const grandPaid = activeTypes.reduce((s, t) => s + (parseFloat(paidAmounts[t]) || 0), 0);
+      const unassigned = grandPaid - coveredTotal;
+      if (Math.abs(unassigned) > 0.005) {
+        html += `<tr><td colspan="${splitTypes.length + (hasPaid ? 2 : 1)}" class="coverage-note">
+          Unassigned: ${fmtAmt(unassigned)} (meals with no joiners)
+        </td></tr>`;
+      }
+    }
+
+    html += `</tbody></table></div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 function restoreFocus(id, val) {
