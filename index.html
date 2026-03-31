@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trip Meal Planner</title>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <style>
+    :root {
+      --green:        #2e7d52;
+      --green-hover:  #245f3f;
+      --green-light:  #e8f5ee;
+      --amber:        #d97706;
+      --bg:           #f2ede4;
+      --white:        #ffffff;
+      --gray-50:      #faf8f5;
+      --gray-100:     #f0ebe0;
+      --gray-200:     #e2d9cb;
+      --gray-400:     #a89880;
+      --gray-600:     #6b5e4e;
+      --gray-900:     #28201a;
+      --breakfast:    #c2410c;
+      --lunch:        #1d4ed8;
+      --dinner:       #6d28d9;
+      --r:            10px;
+      --r-lg:         16px;
+      --shadow:       0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.05);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--gray-900);
+      min-height: 100vh;
+      line-height: 1.5;
+      font-size: 15px;
+    }
+
+    /* ── Header ─────────────────────────────── */
+    .header {
+      background: var(--green);
+      color: #fff;
+      height: 54px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.2);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header h1 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .header-btn {
+      background: rgba(255,255,255,.15);
+      border: none;
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: var(--r);
+      cursor: pointer;
+      font-size: .85rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .header-btn:hover { background: rgba(255,255,255,.25); }
+
+    /* ── Layout ─────────────────────────────── */
+    .page { display: none; }
+    .page.active { display: block; }
+    .container { max-width: 680px; margin: 0 auto; padding: 20px 14px; }
+
+    /* ── Cards ──────────────────────────────── */
+    .card {
+      background: var(--white);
+      border-radius: var(--r-lg);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
+    }
+
+    /* ── Buttons ────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--r);
+      border: none;
+      cursor: pointer;
+      font-size: .88rem;
+      font-weight: 500;
+      font-family: inherit;
+      transition: all .15s;
+    }
+    .btn-primary   { background: var(--green); color: #fff; }
+    .btn-primary:hover { background: var(--green-hover); }
+    .btn-secondary { background: var(--gray-100); color: var(--gray-900); border: 1px solid var(--gray-200); }
+    .btn-secondary:hover { background: var(--gray-200); }
+    .btn-danger    { background: #fee2e2; color: #dc2626; }
+    .btn-danger:hover { background: #fecaca; }
+    .btn-sm { padding: 5px 11px; font-size: .82rem; }
+    .btn-x {
+      background: none; border: none; cursor: pointer;
+      color: var(--gray-400); font-size: .9rem;
+      padding: 2px 4px; border-radius: 4px;
+      transition: all .15s;
+    }
+    .btn-x:hover { background: #fee2e2; color: #dc2626; }
+
+    /* ── Inputs ─────────────────────────────── */
+    input[type=text], input[type=date], input[type=time], select {
+      padding: 8px 11px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: var(--r);
+      font-size: .9rem;
+      font-family: inherit;
+      color: var(--gray-900);
+      background: var(--white);
+      transition: border-color .15s;
+      width: 100%;
+    }
+    input[type=text]:focus, input[type=date]:focus,
+    input[type=time]:focus, select:focus {
+      outline: none;
+      border-color: var(--green);
+    }
+
+    /* ── Trips list page ────────────────────── */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .page-header h2 { font-size: 1.15rem; font-weight: 700; }
+
+    .join-card {
+      background: var(--white);
+      border-radius: var(--r-lg);
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+    }
+    .join-label { font-size: .78rem; font-weight: 600; color: var(--gray-600); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+    .add-row { display: flex; gap: 7px; align-items: center; }
+    .add-row input { flex: 1; }
+
+    .trip-card {
+      background: var(--white);
+      border-radius: var(--r-lg);
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 9px;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1.5px solid transparent;
+    }
+    .trip-card:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,.1); border-color: var(--green-light); }
+    .trip-card h3 { font-size: .98rem; font-weight: 600; margin-bottom: 3px; }
+    .trip-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: .8rem; color: var(--gray-600); }
+    .trip-arrow { color: var(--gray-400); font-size: 1.3rem; line-height: 1; }
+
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--gray-600); }
+    .empty-icon { font-size: 2.5rem; margin-bottom: 10px; }
+    .loading { text-align: center; padding: 30px; color: var(--gray-600); font-size: .9rem; }
+
+    /* ── Modal ──────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 16px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--white);
+      border-radius: var(--r-lg);
+      padding: 24px;
+      width: 100%;
+      max-width: 460px;
+      box-shadow: 0 24px 48px rgba(0,0,0,.2);
+    }
+    .modal h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 18px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: .8rem; font-weight: 600; color: var(--gray-600); margin-bottom: 5px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+    /* ── Trip detail ────────────────────────── */
+    .card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .card-row h2 { font-size: 1.2rem; font-weight: 700; }
+    .trip-detail-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: .82rem; color: var(--gray-600); margin-top: 5px; }
+
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 11px; }
+    .section-title { font-size: .98rem; font-weight: 600; }
+
+    /* ── Participants ───────────────────────── */
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 11px; min-height: 20px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--green-light); color: var(--green);
+      border-radius: 20px; padding: 4px 10px 4px 12px;
+      font-size: .83rem; font-weight: 500;
+    }
+    .chip-remove {
+      background: none; border: none; cursor: pointer;
+      color: var(--green); opacity: .55; font-size: .95rem;
+      display: flex; align-items: center; padding: 0; line-height: 1;
+    }
+    .chip-remove:hover { opacity: 1; }
+    .muted { font-size: .85rem; color: var(--gray-600); font-style: italic; }
+
+    /* ── Day group ──────────────────────────── */
+    .day-group { margin-bottom: 18px; }
+    .day-label {
+      font-size: .75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .07em;
+      color: var(--gray-600); padding: 0 4px; margin-bottom: 7px;
+    }
+
+    /* ── Meal card ──────────────────────────── */
+    .meal-card {
+      background: var(--white);
+      border-radius: var(--r-lg);
+      border: 1.5px solid var(--gray-200);
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .meal-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 11px 14px;
+      cursor: pointer; user-select: none;
+    }
+    .meal-header:hover { background: var(--gray-50); }
+    .badge {
+      padding: 2px 9px; border-radius: 20px;
+      font-size: .75rem; font-weight: 700; letter-spacing: .02em;
+    }
+    .badge-breakfast { background: #fff0e6; color: var(--breakfast); }
+    .badge-lunch     { background: #eff6ff; color: var(--lunch); }
+    .badge-dinner    { background: #f5f3ff; color: var(--dinner); }
+    .meal-time { font-size: .8rem; color: var(--gray-600); }
+    .meal-summary { flex: 1; font-size: .78rem; color: var(--gray-600); text-align: right; padding-right: 2px; }
+    .chevron { color: var(--gray-400); font-size: .95rem; transition: transform .2s; }
+    .chevron.open { transform: rotate(90deg); }
+
+    .meal-body { display: none; padding: 0 14px 14px; border-top: 1px solid var(--gray-100); }
+    .meal-body.open { display: block; }
+
+    .meal-section { margin-top: 13px; }
+    .section-label {
+      font-size: .73rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--gray-600); margin-bottom: 7px;
+    }
+
+    /* ── Joiners ────────────────────────────── */
+    .pills { display: flex; flex-wrap: wrap; gap: 7px; }
+    .pill {
+      display: inline-flex; align-items: center;
+      padding: 5px 13px; border-radius: 20px;
+      border: 1.5px solid var(--gray-200);
+      background: var(--white); color: var(--gray-600);
+      font-size: .83rem; cursor: pointer;
+      font-family: inherit; transition: all .15s;
+    }
+    .pill:hover { background: var(--gray-100); }
+    .pill.active { background: var(--green-light); border-color: var(--green); color: var(--green); font-weight: 600; }
+
+    /* ── Groceries ──────────────────────────── */
+    .grocery-list { list-style: none; margin-bottom: 4px; }
+    .grocery-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 0; border-bottom: 1px solid var(--gray-100);
+      font-size: .88rem;
+    }
+    .grocery-item:last-child { border-bottom: none; }
+    .g-name { flex: 1; font-weight: 500; }
+    .g-qty {
+      font-size: .78rem; color: var(--gray-600);
+      background: var(--gray-100); padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .input-sm { padding: 6px 9px !important; font-size: .85rem !important; }
+    .input-flex { flex: 2; }
+    .input-qty { flex: 1; min-width: 0; }
+
+    /* ── Setup banner ───────────────────────── */
+    .setup-banner {
+      background: #fffbeb;
+      border: 1.5px solid #fcd34d;
+      border-radius: var(--r-lg);
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      font-size: .88rem;
+      color: #92400e;
+    }
+    .setup-banner strong { display: block; margin-bottom: 4px; }
+
+    @media (max-width: 480px) {
+      .form-row { grid-template-columns: 1fr; }
+      .trip-detail-meta { gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────── -->
+<header class="header">
+  <button id="back-btn" class="header-btn" style="display:none" onclick="navigate('/')">← Back</button>
+  <h1 id="header-title">Trip Meal Planner</h1>
+  <button id="share-btn" class="header-btn" style="display:none" onclick="shareTrip()">🔗 Share</button>
+</header>
+
+<!-- ── Page: Trips list ─────────────────────────────────── -->
+<div id="page-trips" class="page active">
+  <div class="container">
+    <div id="setup-banner"></div>
+    <div class="page-header">
+      <h2>Your Trips</h2>
+      <button class="btn btn-primary" onclick="openModal()">+ New Trip</button>
+    </div>
+    <div class="join-card">
+      <div class="join-label">Join a trip via link</div>
+      <div class="add-row">
+        <input type="text" id="join-input" placeholder="Paste trip link or ID…" onkeydown="if(event.key==='Enter')joinTrip()">
+        <button class="btn btn-secondary btn-sm" onclick="joinTrip()">Join</button>
+      </div>
+    </div>
+    <div id="trips-list"></div>
+  </div>
+</div>
+
+<!-- ── Page: Trip detail ─────────────────────────────────── -->
+<div id="page-trip" class="page">
+  <div class="container">
+    <div id="trip-info-card" class="card"></div>
+    <div id="participants-card" class="card"></div>
+    <div id="meals-section"></div>
+  </div>
+</div>
+
+<!-- ── Modal: New Trip ───────────────────────────────────── -->
+<div id="modal-new-trip" class="modal-overlay">
+  <div class="modal">
+    <h2>New Trip</h2>
+    <div class="form-group">
+      <label>Trip Name</label>
+      <input type="text" id="new-trip-name" placeholder="e.g. Cabin Weekend"
+        onkeydown="if(event.key==='Enter')createTrip()">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Start Date</label>
+        <input type="date" id="new-trip-start-date">
+      </div>
+      <div class="form-group">
+        <label>Start Time</label>
+        <input type="time" id="new-trip-start-time" value="14:00">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>End Date</label>
+        <input type="date" id="new-trip-end-date">
+      </div>
+      <div class="form-group">
+        <label>End Time</label>
+        <input type="time" id="new-trip-end-time" value="12:00">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createTrip()">Create Trip</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Firebase init ──────────────────────────────────────────
+let db;
+try {
+  if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey !== 'REPLACE_ME') {
+    firebase.initializeApp(window.FIREBASE_CONFIG);
+    db = firebase.firestore();
+  }
+} catch(e) { console.error('Firebase init error:', e); }
+
+function isReady() {
+  if (!db) {
+    document.getElementById('setup-banner').innerHTML = `
+      <div class="setup-banner">
+        <strong>⚙️ Firebase not configured yet</strong>
+        Edit <code>firebase-config.js</code> with your Firebase project credentials to enable data storage and sharing.
+      </div>`;
+    return false;
+  }
+  return true;
+}
+
+// ── Helpers ────────────────────────────────────────────────
+const h = s => String(s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+// ── Local trip ID tracking ─────────────────────────────────
+function getLocalIds() {
+  try { return JSON.parse(localStorage.getItem('trip_planner_ids') || '[]'); }
+  catch { return []; }
+}
+function addLocalId(id) {
+  const ids = getLocalIds();
+  if (!ids.includes(id)) { ids.unshift(id); localStorage.setItem('trip_planner_ids', JSON.stringify(ids)); }
+}
+function removeLocalId(id) {
+  localStorage.setItem('trip_planner_ids', JSON.stringify(getLocalIds().filter(i => i !== id)));
+}
+
+// ── Meal computation ───────────────────────────────────────
+const MEAL_DEFS = [
+  { type: 'Breakfast', hour: 8 },
+  { type: 'Lunch',     hour: 12 },
+  { type: 'Dinner',    hour: 18 },
+];
+
+function computeMeals(startIso, endIso) {
+  const start = new Date(startIso);
+  const end   = new Date(endIso);
+  const meals = [];
+  const day   = new Date(start); day.setHours(0,0,0,0);
+  const endDay = new Date(end);  endDay.setHours(0,0,0,0);
+  while (day <= endDay) {
+    for (const def of MEAL_DEFS) {
+      const mt = new Date(day); mt.setHours(def.hour, 0, 0, 0);
+      if (mt >= start && mt <= end) {
+        const date = day.toISOString().split('T')[0];
+        meals.push({ date, type: def.type, hour: def.hour, key: `${date}_${def.type}` });
+      }
+    }
+    day.setDate(day.getDate() + 1);
+  }
+  return meals;
+}
+
+// ── Navigation ─────────────────────────────────────────────
+let currentTripId  = null;
+let firestoreUnsub = null;
+
+function navigate(route) {
+  if (firestoreUnsub) { firestoreUnsub(); firestoreUnsub = null; }
+
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+  if (route === '/') {
+    document.getElementById('page-trips').classList.add('active');
+    document.getElementById('back-btn').style.display  = 'none';
+    document.getElementById('share-btn').style.display = 'none';
+    document.getElementById('header-title').textContent = 'Trip Meal Planner';
+    history.replaceState(null, '', location.pathname + '#/');
+    loadTripsList();
+  } else if (route.startsWith('/trip/')) {
+    const id = route.slice(6);
+    currentTripId = id;
+    addLocalId(id);
+    document.getElementById('page-trip').classList.add('active');
+    document.getElementById('back-btn').style.display  = 'flex';
+    document.getElementById('share-btn').style.display = 'flex';
+    history.replaceState(null, '', location.pathname + `#/trip/${id}`);
+    subscribeToTrip(id);
+  }
+}
+
+window.addEventListener('hashchange', () => {
+  const hash = location.hash.slice(1) || '/';
+  navigate(hash);
+});
+
+// ── Firestore: trips list ──────────────────────────────────
+async function loadTripsList() {
+  if (!isReady()) return;
+  const ids = getLocalIds();
+  const container = document.getElementById('trips-list');
+  if (ids.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🏕️</div><p>No trips yet.<br>Create your first one!</p></div>`;
+    return;
+  }
+  container.innerHTML = `<div class="loading">Loading…</div>`;
+  try {
+    const docs = await Promise.all(ids.map(id => db.collection('trips').doc(id).get()));
+    const trips = docs
+      .map(d => d.exists ? { id: d.id, ...d.data() } : null)
+      .filter(Boolean);
+    // Prune IDs for deleted trips
+    localStorage.setItem('trip_planner_ids', JSON.stringify(trips.map(t => t.id)));
+    renderTripsList(trips);
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><p>Error loading trips: ${h(e.message)}</p></div>`;
+  }
+}
+
+// ── Firestore: trip detail (real-time) ─────────────────────
+function subscribeToTrip(id) {
+  if (!isReady()) return;
+  document.getElementById('trip-info-card').innerHTML   = '<div class="loading">Loading…</div>';
+  document.getElementById('participants-card').innerHTML = '';
+  document.getElementById('meals-section').innerHTML    = '';
+
+  firestoreUnsub = db.collection('trips').doc(id).onSnapshot(doc => {
+    if (!doc.exists) { alert('Trip not found.'); navigate('/'); return; }
+    const trip = { id: doc.id, ...doc.data() };
+    document.getElementById('header-title').textContent = trip.name;
+    renderTripDetail(trip);
+  }, err => {
+    alert('Error: ' + err.message);
+  });
+}
+
+// ── Trip CRUD ──────────────────────────────────────────────
+function openModal() {
+  const today    = new Date();
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const fmt = d => d.toISOString().split('T')[0];
+  document.getElementById('new-trip-start-date').value = fmt(today);
+  document.getElementById('new-trip-end-date').value   = fmt(tomorrow);
+  document.getElementById('new-trip-name').value       = '';
+  document.getElementById('modal-new-trip').classList.add('open');
+  setTimeout(() => document.getElementById('new-trip-name').focus(), 50);
+}
+function closeModal() {
+  document.getElementById('modal-new-trip').classList.remove('open');
+}
+
+async function createTrip() {
+  if (!isReady()) return;
+  const name  = document.getElementById('new-trip-name').value.trim();
+  const sd    = document.getElementById('new-trip-start-date').value;
+  const st    = document.getElementById('new-trip-start-time').value;
+  const ed    = document.getElementById('new-trip-end-date').value;
+  const et    = document.getElementById('new-trip-end-time').value;
+  if (!name)       { alert('Enter a trip name.'); return; }
+  if (!sd || !ed)  { alert('Enter start and end dates.'); return; }
+  const start = `${sd}T${st}`;
+  const end   = `${ed}T${et}`;
+  if (new Date(end) <= new Date(start)) { alert('End must be after start.'); return; }
+
+  const btn = document.querySelector('#modal-new-trip .btn-primary');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const ref = await db.collection('trips').add({
+      name, startDatetime: start, endDatetime: end,
+      participants: [], mealData: {},
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    closeModal();
+    navigate(`/trip/${ref.id}`);
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Trip';
+  }
+}
+
+async function deleteTrip(id) {
+  if (!confirm('Delete this trip? All data will be lost for everyone.')) return;
+  try {
+    await db.collection('trips').doc(id).delete();
+    removeLocalId(id);
+    navigate('/');
+  } catch(e) { alert(e.message); }
+}
+
+// ── Participants ───────────────────────────────────────────
+async function addParticipant() {
+  const input = document.getElementById('new-participant-input');
+  const name  = input.value.trim();
+  if (!name) return;
+  input.value = '';
+  try {
+    await db.collection('trips').doc(currentTripId).update({
+      participants: firebase.firestore.FieldValue.arrayUnion(name)
+    });
+  } catch(e) { alert(e.message); input.value = name; }
+}
+
+async function removeParticipant(name) {
+  if (!confirm(`Remove ${name} from this trip?`)) return;
+  try {
+    const snap    = await db.collection('trips').doc(currentTripId).get();
+    const mealData = snap.data()?.mealData || {};
+    const updates  = { participants: firebase.firestore.FieldValue.arrayRemove(name) };
+    for (const [key, md] of Object.entries(mealData)) {
+      if (md.cook === name) updates[`mealData.${key}.cook`] = null;
+      if (md.joiners?.includes(name)) {
+        updates[`mealData.${key}.joiners`] = md.joiners.filter(j => j !== name);
+      }
+    }
+    await db.collection('trips').doc(currentTripId).update(updates);
+  } catch(e) { alert(e.message); }
+}
+
+// ── Meal assignments ───────────────────────────────────────
+async function setCook(mealKey, cook) {
+  const updates = { [`mealData.${mealKey}.cook`]: cook || null };
+  if (cook) {
+    const snap    = await db.collection('trips').doc(currentTripId).get();
+    const joiners = snap.data()?.mealData?.[mealKey]?.joiners || [];
+    if (!joiners.includes(cook)) updates[`mealData.${mealKey}.joiners`] = [...joiners, cook];
+  }
+  await db.collection('trips').doc(currentTripId).update(updates).catch(e => alert(e.message));
+}
+
+async function toggleJoiner(mealKey, name) {
+  const snap    = await db.collection('trips').doc(currentTripId).get();
+  const joiners = snap.data()?.mealData?.[mealKey]?.joiners || [];
+  const next    = joiners.includes(name) ? joiners.filter(j => j !== name) : [...joiners, name];
+  await db.collection('trips').doc(currentTripId).update({
+    [`mealData.${mealKey}.joiners`]: next
+  }).catch(e => alert(e.message));
+}
+
+// ── Groceries ──────────────────────────────────────────────
+async function addGrocery(mealKey) {
+  const nameEl = document.getElementById(`g-name-${mealKey}`);
+  const qtyEl  = document.getElementById(`g-qty-${mealKey}`);
+  const item   = nameEl.value.trim();
+  if (!item) return;
+  const entry = { id: uid(), item, quantity: qtyEl.value.trim() };
+  nameEl.value = ''; qtyEl.value = '';
+  try {
+    const snap      = await db.collection('trips').doc(currentTripId).get();
+    const groceries = snap.data()?.mealData?.[mealKey]?.groceries || [];
+    await db.collection('trips').doc(currentTripId).update({
+      [`mealData.${mealKey}.groceries`]: [...groceries, entry]
+    });
+    nameEl.focus();
+  } catch(e) { alert(e.message); nameEl.value = item; }
+}
+
+async function removeGrocery(mealKey, groceryId) {
+  try {
+    const snap      = await db.collection('trips').doc(currentTripId).get();
+    const groceries = (snap.data()?.mealData?.[mealKey]?.groceries || []).filter(g => g.id !== groceryId);
+    await db.collection('trips').doc(currentTripId).update({
+      [`mealData.${mealKey}.groceries`]: groceries
+    });
+  } catch(e) { alert(e.message); }
+}
+
+// ── Share / Join ───────────────────────────────────────────
+function shareTrip() {
+  const url = `${location.origin}${location.pathname}#/trip/${currentTripId}`;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('share-btn');
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => { btn.innerHTML = '🔗 Share'; }, 2200);
+  }).catch(() => prompt('Copy this link:', url));
+}
+
+function joinTrip() {
+  const val = document.getElementById('join-input').value.trim();
+  if (!val) return;
+  const match = val.match(/trip\/([A-Za-z0-9]+)/);
+  const id    = match ? match[1] : val;
+  document.getElementById('join-input').value = '';
+  navigate(`/trip/${id}`);
+}
+
+// ── Meal card expand/collapse ──────────────────────────────
+function toggleMeal(key) {
+  const body  = document.getElementById(`body-${key}`);
+  const chev  = document.getElementById(`chev-${key}`);
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (chev) chev.classList.toggle('open', open);
+}
+
+// ── Render: Trips list ─────────────────────────────────────
+function renderTripsList(trips) {
+  const container = document.getElementById('trips-list');
+  if (trips.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🏕️</div><p>No trips yet.<br>Create your first one!</p></div>`;
+    return;
+  }
+  const fmtD = d => new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric' });
+  container.innerHTML = trips.map(trip => {
+    const meals    = computeMeals(trip.startDatetime, trip.endDatetime);
+    const assigned = Object.values(trip.mealData || {}).filter(m => m.cook).length;
+    return `
+      <div class="trip-card" onclick="navigate('/trip/${trip.id}')">
+        <div>
+          <h3>${h(trip.name)}</h3>
+          <div class="trip-meta">
+            <span>📅 ${fmtD(trip.startDatetime)} – ${fmtD(trip.endDatetime)}</span>
+            <span>🍽️ ${assigned}/${meals.length} meals assigned</span>
+            <span>👥 ${(trip.participants||[]).length} people</span>
+          </div>
+        </div>
+        <span class="trip-arrow">›</span>
+      </div>`;
+  }).join('');
+}
+
+// ── Render: Trip detail ────────────────────────────────────
+function renderTripDetail(trip) {
+  // Remember which meals were open and what the user was typing
+  const openMeals = new Set([...document.querySelectorAll('.meal-body.open')].map(el => el.dataset.key));
+  const focusId   = document.activeElement?.id;
+  const focusVal  = document.activeElement?.value;
+
+  const meals   = computeMeals(trip.startDatetime, trip.endDatetime);
+  const fmtDT   = iso => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })
+      + ' ' + d.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', hour12: false });
+  };
+
+  // ── Info card ──
+  document.getElementById('trip-info-card').innerHTML = `
+    <div class="card-row">
+      <div>
+        <h2>${h(trip.name)}</h2>
+        <div class="trip-detail-meta">
+          <span>📅 ${fmtDT(trip.startDatetime)}</span>
+          <span>→ ${fmtDT(trip.endDatetime)}</span>
+          <span>🍽️ ${meals.length} meals total</span>
+        </div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="deleteTrip('${trip.id}')">Delete</button>
+    </div>`;
+
+  // ── Participants card ──
+  document.getElementById('participants-card').innerHTML = `
+    <div class="section-header"><span class="section-title">👥 Participants</span></div>
+    <div class="chips">
+      ${(trip.participants || []).length === 0
+        ? '<span class="muted">No participants yet</span>'
+        : (trip.participants || []).map(p => `
+            <span class="chip">
+              ${h(p)}
+              <button class="chip-remove" data-name="${h(p)}">✕</button>
+            </span>`).join('')
+      }
+    </div>
+    <div class="add-row">
+      <input id="new-participant-input" type="text" placeholder="Add name…"
+        onkeydown="if(event.key==='Enter')addParticipant()">
+      <button class="btn btn-primary btn-sm" onclick="addParticipant()">Add</button>
+    </div>`;
+
+  // ── Meals ──
+  if (meals.length === 0) {
+    document.getElementById('meals-section').innerHTML =
+      `<div class="card"><p class="muted" style="text-align:center;padding:16px">No meals fall within this trip's time range.</p></div>`;
+    restoreFocus(focusId, focusVal);
+    return;
+  }
+
+  // Group by date
+  const byDate = {};
+  for (const m of meals) {
+    if (!byDate[m.date]) byDate[m.date] = [];
+    byDate[m.date].push(m);
+  }
+
+  const noParticipants = (trip.participants || []).length === 0;
+
+  let html = `<div class="section-header" style="padding:0 4px"><span class="section-title">🍽️ Meals</span></div>`;
+
+  for (const [date, dateMeals] of Object.entries(byDate)) {
+    const dayLabel = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
+      weekday: 'long', month: 'short', day: 'numeric'
+    });
+    html += `<div class="day-group"><div class="day-label">${dayLabel}</div>`;
+
+    for (const meal of dateMeals) {
+      const md     = trip.mealData?.[meal.key] || { cook: null, joiners: [], groceries: [] };
+      const isOpen = openMeals.has(meal.key);
+      const icon   = meal.type === 'Breakfast' ? '🌅' : meal.type === 'Lunch' ? '☀️' : '🌙';
+
+      const summaryParts = [];
+      if (md.cook)                        summaryParts.push(`👨‍🍳 ${h(md.cook)}`);
+      if ((md.joiners||[]).length)        summaryParts.push(`${md.joiners.length} joining`);
+      if ((md.groceries||[]).length)      summaryParts.push(`${md.groceries.length} item${md.groceries.length !== 1 ? 's' : ''}`);
+      const summary = summaryParts.join(' · ');
+
+      html += `
+        <div class="meal-card">
+          <div class="meal-header" onclick="toggleMeal('${meal.key}')">
+            <span>${icon}</span>
+            <span class="badge badge-${meal.type.toLowerCase()}">${meal.type}</span>
+            <span class="meal-time">${String(meal.hour).padStart(2,'0')}:00</span>
+            <span class="meal-summary">${summary}</span>
+            <span class="chevron ${isOpen ? 'open' : ''}" id="chev-${meal.key}">›</span>
+          </div>
+          <div class="meal-body ${isOpen ? 'open' : ''}" data-key="${meal.key}" id="body-${meal.key}">
+            ${noParticipants
+              ? `<p class="muted" style="margin-top:13px">Add participants above to assign this meal.</p>`
+              : `
+              <div class="meal-section">
+                <div class="section-label">Cook</div>
+                <select onchange="setCook('${meal.key}', this.value)">
+                  <option value="">— Unassigned —</option>
+                  ${(trip.participants||[]).map(p =>
+                    `<option value="${h(p)}" ${md.cook === p ? 'selected' : ''}>${h(p)}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div class="meal-section">
+                <div class="section-label">Who's joining (${(md.joiners||[]).length})</div>
+                <div class="pills">
+                  ${(trip.participants||[]).map(p => `
+                    <button class="pill ${(md.joiners||[]).includes(p) ? 'active' : ''}"
+                      data-meal-key="${meal.key}" data-name="${h(p)}">
+                      ${h(p)}
+                    </button>`).join('')}
+                </div>
+              </div>`
+            }
+            <div class="meal-section">
+              <div class="section-label">Groceries</div>
+              ${(md.groceries||[]).length > 0 ? `
+                <ul class="grocery-list">
+                  ${(md.groceries||[]).map(g => `
+                    <li class="grocery-item">
+                      <span class="g-name">${h(g.item)}</span>
+                      ${g.quantity ? `<span class="g-qty">${h(g.quantity)}</span>` : ''}
+                      <button class="btn-x" onclick="removeGrocery('${meal.key}','${g.id}')" title="Remove">✕</button>
+                    </li>`).join('')}
+                </ul>` : ''}
+              <div class="add-row" style="margin-top:8px">
+                <input id="g-name-${meal.key}" type="text" placeholder="Item name"
+                  class="input-sm input-flex"
+                  onkeydown="if(event.key==='Enter')addGrocery('${meal.key}')">
+                <input id="g-qty-${meal.key}" type="text" placeholder="Qty"
+                  class="input-sm input-qty"
+                  onkeydown="if(event.key==='Enter')addGrocery('${meal.key}')">
+                <button class="btn btn-primary btn-sm" onclick="addGrocery('${meal.key}')">Add</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+    html += `</div>`;
+  }
+
+  document.getElementById('meals-section').innerHTML = html;
+  restoreFocus(focusId, focusVal);
+}
+
+function restoreFocus(id, val) {
+  if (!id) return;
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.focus();
+  if (val !== undefined && el.tagName === 'INPUT') {
+    el.value = val;
+    el.setSelectionRange(val.length, val.length);
+  }
+}
+
+// ── Event delegation (safe handling of user-provided names) ──
+document.addEventListener('click', e => {
+  const removeBtn = e.target.closest('.chip-remove');
+  if (removeBtn) { removeParticipant(removeBtn.dataset.name); return; }
+
+  const pill = e.target.closest('.pill[data-meal-key]');
+  if (pill) { toggleJoiner(pill.dataset.mealKey, pill.dataset.name); return; }
+
+  if (e.target.classList.contains('modal-overlay')) closeModal();
+});
+
+// ── Boot ───────────────────────────────────────────────────
+const initHash = location.hash.slice(1) || '/';
+navigate(initHash);
+</script>
+</body>
+</html>
