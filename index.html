@@ -14,6 +14,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
   <script src="firebase-config.js"></script>
   <style>
     :root {
@@ -407,8 +408,8 @@
     .auth-error { background:#fee2e2; color:#dc2626; border-radius:var(--r); padding:10px 12px; font-size:.85rem; margin-bottom:14px; display:none; }
     .auth-error.show { display:block; }
     /* ── Chat page ──────────────────────────── */
-    .chat-wrap { display:flex; flex-direction:column; height:calc(100vh - 54px); max-width:680px; margin:0 auto; }
-    .chat-messages { flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:1px; }
+    .chat-wrap { display:flex; flex-direction:column; height:calc(100dvh - 54px); max-width:680px; margin:0 auto; }
+    .chat-messages { flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:1px; -webkit-overflow-scrolling:touch; }
     .msg-group { display:flex; gap:10px; margin-top:14px; }
     .msg-group:first-child { margin-top:4px; }
     .msg-avatar { width:34px; height:34px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:.75rem; font-weight:700; color:white; flex-shrink:0; }
@@ -421,14 +422,28 @@
     .msg-continue { margin-left:44px; margin-bottom:2px; }
     .chat-date-sep { text-align:center; font-size:.73rem; color:var(--gray-400); font-weight:600; letter-spacing:.04em; text-transform:uppercase; margin:12px 0; display:flex; align-items:center; gap:8px; }
     .chat-date-sep::before, .chat-date-sep::after { content:''; flex:1; height:1px; background:var(--gray-200); }
-    .chat-input-wrap { padding:10px 14px; border-top:1px solid var(--gray-200); background:var(--white); display:flex; gap:8px; align-items:flex-end; }
-    .chat-input { flex:1; padding:9px 12px; border:1.5px solid var(--gray-200); border-radius:var(--r); font-size:.9rem; font-family:inherit; resize:none; max-height:120px; line-height:1.4; transition:border-color .15s; }
+    .chat-input-wrap { padding:8px 10px; border-top:1px solid var(--gray-200); background:var(--white); display:flex; gap:6px; align-items:flex-end; padding-bottom:max(8px, env(safe-area-inset-bottom)); }
+    /* font-size 16px prevents iOS auto-zoom on focus */
+    .chat-input { flex:1; padding:9px 12px; border:1.5px solid var(--gray-200); border-radius:var(--r); font-size:16px; font-family:inherit; resize:none; max-height:120px; line-height:1.4; transition:border-color .15s; }
     .chat-input:focus { outline:none; border-color:var(--green); }
-    .chat-send-btn { background:var(--green); color:white; border:none; border-radius:var(--r); padding:9px 14px; font-size:.95rem; cursor:pointer; transition:background .15s; flex-shrink:0; }
+    .chat-attach-btn { background:var(--gray-100); color:var(--gray-600); border:none; border-radius:var(--r); width:38px; height:38px; font-size:1.1rem; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition:background .15s; }
+    .chat-attach-btn:hover { background:var(--gray-200); }
+    .chat-send-btn { background:var(--green); color:white; border:none; border-radius:var(--r); width:38px; height:38px; font-size:1rem; cursor:pointer; transition:background .15s; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
     .chat-send-btn:hover { background:var(--green-hover); }
     .chat-send-btn:disabled { opacity:.45; cursor:default; }
     .chat-empty { text-align:center; color:var(--gray-400); font-size:.88rem; padding:40px 20px; }
     .unread-dot { display:inline-block; width:8px; height:8px; background:var(--green); border-radius:50%; margin-left:6px; vertical-align:middle; }
+    /* Image attachments */
+    .msg-img { max-width:260px; max-height:320px; border-radius:8px; display:block; cursor:pointer; margin-top:4px; }
+    .msg-img-loading { width:200px; height:120px; background:var(--gray-100); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:.8rem; color:var(--gray-400); }
+    .msg-file { display:inline-flex; align-items:center; gap:8px; background:var(--gray-100); border-radius:8px; padding:8px 12px; font-size:.85rem; color:var(--gray-900); text-decoration:none; margin-top:4px; }
+    .msg-file:hover { background:var(--gray-200); }
+    .upload-progress { height:3px; background:var(--green); border-radius:2px; transition:width .2s; margin-top:4px; }
+    /* Image lightbox */
+    .lightbox { position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:999; display:none; align-items:center; justify-content:center; padding:20px; }
+    .lightbox.open { display:flex; }
+    .lightbox img { max-width:100%; max-height:100%; border-radius:8px; object-fit:contain; }
+    .lightbox-close { position:absolute; top:16px; right:16px; background:none; border:none; color:white; font-size:1.8rem; cursor:pointer; line-height:1; }
     /* ── Profile modal ──────────────────────── */
     .profile-section { margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--gray-100); }
     .profile-section:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
@@ -517,13 +532,25 @@
 <div id="page-chat" class="page">
   <div class="chat-wrap">
     <div id="chat-messages" class="chat-messages"><div class="chat-empty">Loading…</div></div>
+    <div id="upload-bar" style="display:none;padding:0 14px 4px">
+      <div style="font-size:.78rem;color:var(--gray-600);margin-bottom:2px" id="upload-label">Uploading…</div>
+      <div style="background:var(--gray-200);border-radius:2px;height:3px"><div id="upload-progress" class="upload-progress" style="width:0%"></div></div>
+    </div>
     <div class="chat-input-wrap">
+      <input type="file" id="chat-file-input" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" style="display:none" onchange="handleFileSelect(this)">
+      <button class="chat-attach-btn" onclick="document.getElementById('chat-file-input').click()" title="Attach file">📎</button>
       <textarea id="chat-input" class="chat-input" rows="1" placeholder="Message…"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage()}"
         oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
       <button class="chat-send-btn" id="chat-send-btn" onclick="sendChatMessage()">➤</button>
     </div>
   </div>
+</div>
+
+<!-- ── Lightbox ───────────────────────────────────────────── -->
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">×</button>
+  <img id="lightbox-img" src="" alt="">
 </div>
 
 <!-- ── Modal: Profile ────────────────────────────────────── -->
@@ -621,13 +648,14 @@
 
 <script>
 // ── Firebase init ──────────────────────────────────────────
-let db, auth, messaging, functions;
+let db, auth, messaging, functions, storage;
 try {
   if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey !== 'REPLACE_ME') {
     firebase.initializeApp(window.FIREBASE_CONFIG);
     db        = firebase.firestore();
     auth      = firebase.auth();
     functions = firebase.functions();
+    storage   = firebase.storage();
     try { messaging = firebase.messaging(); } catch(e) { /* unsupported browser */ }
   }
 } catch(e) { console.error('Firebase init error:', e); }
@@ -903,6 +931,56 @@ function subscribeToChat(tripId) {
     });
 }
 
+async function handleFileSelect(input) {
+  const file = input.files[0];
+  if (!file || !currentUser || !storage) return;
+  input.value = '';
+
+  const MAX_MB = 10;
+  if (file.size > MAX_MB * 1024 * 1024) { alert(`File is too large. Max ${MAX_MB} MB.`); return; }
+
+  const isImage = file.type.startsWith('image/');
+  const ext     = file.name.split('.').pop();
+  const path    = `trips/${currentChatId}/${Date.now()}_${uid()}.${ext}`;
+  const ref     = storage.ref(path);
+
+  const bar      = document.getElementById('upload-bar');
+  const prog     = document.getElementById('upload-progress');
+  const label    = document.getElementById('upload-label');
+  bar.style.display = '';
+  label.textContent = `Uploading ${file.name}…`;
+  prog.style.width  = '0%';
+
+  const uploadTask = ref.put(file);
+  uploadTask.on('state_changed',
+    snap => { prog.style.width = Math.round(snap.bytesTransferred / snap.totalBytes * 100) + '%'; },
+    err  => { bar.style.display = 'none'; alert('Upload failed: ' + err.message); },
+    async () => {
+      bar.style.display = 'none';
+      const url = await uploadTask.snapshot.ref.getDownloadURL();
+      await db.collection('trips').doc(currentChatId).collection('messages').add({
+        text:       '',
+        fileUrl:    url,
+        fileName:   file.name,
+        fileType:   file.type,
+        isImage,
+        authorUid:  currentUser.uid,
+        authorName: currentUser.displayName || currentUser.email.split('@')[0],
+        timestamp:  firebase.firestore.FieldValue.serverTimestamp(),
+        tripId:     currentChatId,
+      });
+    }
+  );
+}
+
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+
 async function sendChatMessage() {
   if (!currentUser) return;
   const input = document.getElementById('chat-input');
@@ -922,6 +1000,18 @@ async function sendChatMessage() {
   } catch(e) { alert(e.message); input.value = text; }
   btn.disabled = false;
   document.getElementById('chat-input')?.focus();
+}
+
+function msgContent(msg, isOwn) {
+  if (msg.isImage && msg.fileUrl) {
+    return `<img class="msg-img" src="${h(msg.fileUrl)}" alt="${h(msg.fileName||'image')}" onclick="openLightbox('${h(msg.fileUrl)}')">`;
+  }
+  if (msg.fileUrl) {
+    const icon = '📄';
+    return `<a class="msg-file" href="${h(msg.fileUrl)}" target="_blank" rel="noopener">${icon} ${h(msg.fileName||'File')}</a>`;
+  }
+  const escaped = h(msg.text||'').replace(/\n/g,'<br>');
+  return `<div class="msg-bubble${isOwn?' own':''}">${escaped}</div>`;
 }
 
 function renderMessages(msgs) {
@@ -944,17 +1034,17 @@ function renderMessages(msgs) {
     const newGroup = msg.authorUid !== lastUid || gap > 5;
     const isOwn    = msg.authorUid === currentUser?.uid;
     const timeStr  = ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
-    const escaped  = h(msg.text).replace(/\n/g,'<br>');
+    const content  = msgContent(msg, isOwn);
     if (newGroup) {
       const color = avatarColor(msg.authorName);
       html += `<div class="msg-group">
         <div class="msg-avatar" style="background:${color}">${initials(msg.authorName)}</div>
         <div class="msg-group-body">
           <div class="msg-meta"><span class="msg-author">${h(msg.authorName)}</span><span class="msg-ts">${timeStr}</span></div>
-          <div class="msg-bubble${isOwn?' own':''}">${escaped}</div>
+          ${content}
         </div></div>`;
     } else {
-      html += `<div class="msg-continue"><div class="msg-bubble${isOwn?' own':''}" title="${timeStr}">${escaped}</div></div>`;
+      html += `<div class="msg-continue">${content}</div>`;
     }
     lastUid = msg.authorUid; lastTs = ts;
   }
