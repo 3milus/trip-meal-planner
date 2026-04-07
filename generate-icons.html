@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Generate App Icons</title>
+  <style>
+    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 40px; background: #f2ede4; }
+    h2 { color: #2e7d52; margin-bottom: 8px; }
+    p  { color: #6b5e4e; margin-bottom: 28px; }
+    .icons { display: flex; gap: 40px; flex-wrap: wrap; justify-content: center; margin-bottom: 32px; }
+    .icon-wrap { text-align: center; }
+    canvas { border-radius: 18px; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+    .label { margin-top: 10px; font-size: .85rem; color: #6b5e4e; }
+    a.dl { display: inline-block; margin-top: 10px; padding: 8px 18px; background: #2e7d52; color: white; border-radius: 8px; text-decoration: none; font-size: .85rem; }
+    a.dl:hover { background: #245f3f; }
+    .done { background: #e8f5ee; border: 1.5px solid #2e7d52; border-radius: 12px; padding: 16px 24px; color: #2e7d52; font-weight: 600; display: none; }
+  </style>
+</head>
+<body>
+  <h2>Trip Meal Planner — Icon Generator</h2>
+  <p>Click both download buttons, save the files into the project folder, then commit and push.</p>
+  <div class="icons">
+    <div class="icon-wrap">
+      <canvas id="c192" width="192" height="192"></canvas>
+      <div class="label">192 × 192</div>
+      <a id="dl192" class="dl" download="icon-192.png">⬇ Download icon-192.png</a>
+    </div>
+    <div class="icon-wrap">
+      <canvas id="c512" width="512" height="512"></canvas>
+      <div class="label">512 × 512</div>
+      <a id="dl512" class="dl" download="icon-512.png">⬇ Download icon-512.png</a>
+    </div>
+  </div>
+  <div class="done" id="done">
+    ✓ Save both files into your project folder (next to index.html), then run:<br><br>
+    <code>git add icon-192.png icon-512.png && git commit -m "Add app icons" && git push</code>
+  </div>
+
+<script>
+const SVG_URL = './icon.svg';
+
+function drawIcon(canvas) {
+  return new Promise(resolve => {
+    const size = canvas.width;
+    const ctx  = canvas.getContext('2d');
+    const img  = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, size, size);
+      ctx.drawImage(img, 0, 0, size, size);
+      resolve();
+    };
+    img.onerror = () => {
+      // Fallback: draw programmatically if SVG doesn't load
+      drawFallback(ctx, size);
+      resolve();
+    };
+    img.src = SVG_URL;
+  });
+}
+
+function drawFallback(ctx, s) {
+  // Green rounded background
+  ctx.fillStyle = '#2e7d52';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, s, s, s * 0.19);
+  ctx.fill();
+
+  // Tent
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(s * 0.5,  s * 0.14);
+  ctx.lineTo(s * 0.845, s * 0.72);
+  ctx.lineTo(s * 0.155, s * 0.72);
+  ctx.closePath();
+  ctx.fill();
+
+  // Door cutout
+  ctx.fillStyle = '#2e7d52';
+  ctx.beginPath();
+  ctx.moveTo(s * 0.5,  s * 0.41);
+  ctx.lineTo(s * 0.61, s * 0.72);
+  ctx.lineTo(s * 0.39, s * 0.72);
+  ctx.closePath();
+  ctx.fill();
+
+  // Ground
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth   = s * 0.038;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(s * 0.11, s * 0.72);
+  ctx.lineTo(s * 0.89, s * 0.72);
+  ctx.stroke();
+
+  // Fork
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillRect(s*.183, s*.78, s*.02, s*.135);
+  ctx.fillRect(s*.155, s*.78, s*.016, s*.07);
+  ctx.fillRect(s*.211, s*.78, s*.016, s*.07);
+  ctx.beginPath();
+  ctx.arc(s*.183, s*.85, s*.028, 0, Math.PI);
+  ctx.fill();
+
+  // Knife
+  ctx.fillRect(s*.797, s*.78, s*.02, s*.135);
+  ctx.beginPath();
+  ctx.moveTo(s*.797, s*.78);
+  ctx.quadraticCurveTo(s*.83, s*.80, s*.817, s*.85);
+  ctx.lineTo(s*.797, s*.85);
+  ctx.closePath();
+  ctx.fill();
+
+  // Stars
+  const stars = [[s*.225,s*.31,s*.02],[s*.762,s*.255,s*.014],[s*.845,s*.43,s*.01]];
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  for (const [x,y,r] of stars) {
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  }
+}
+
+async function init() {
+  const c192 = document.getElementById('c192');
+  const c512 = document.getElementById('c512');
+  await Promise.all([drawIcon(c192), drawIcon(c512)]);
+
+  document.getElementById('dl192').href = c192.toDataURL('image/png');
+  document.getElementById('dl512').href = c512.toDataURL('image/png');
+
+  document.getElementById('dl192').addEventListener('click', checkDone);
+  document.getElementById('dl512').addEventListener('click', checkDone);
+}
+
+let downloaded = 0;
+function checkDone() {
+  if (++downloaded >= 2) document.getElementById('done').style.display = 'block';
+}
+
+init();
+</script>
+</body>
+</html>

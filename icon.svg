@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#2e7d52"/>
+
+  <!-- Tent body -->
+  <polygon points="256,72 432,368 80,368" fill="#ffffff"/>
+  <!-- Tent door cutout -->
+  <polygon points="256,210 312,368 200,368" fill="#2e7d52"/>
+
+  <!-- Ground line -->
+  <line x1="56" y1="368" x2="456" y2="368" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+
+  <!-- Fork (left) -->
+  <g fill="#ffffff" opacity="0.85">
+    <rect x="96" y="400" width="10" height="68" rx="5"/>
+    <rect x="82" y="400" width="8" height="36" rx="4"/>
+    <rect x="110" y="400" width="8" height="36" rx="4"/>
+    <path d="M82,436 Q96,450 110,436" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+  </g>
+
+  <!-- Knife (right) -->
+  <g fill="#ffffff" opacity="0.85">
+    <rect x="406" y="400" width="10" height="68" rx="5"/>
+    <path d="M406,400 Q416,400 416,420 L416,436 L406,436 Z" fill="#ffffff"/>
+  </g>
+
+  <!-- Plate -->
+  <ellipse cx="256" cy="450" rx="64" ry="12" fill="#ffffff" opacity="0.3"/>
+
+  <!-- Stars -->
+  <circle cx="116" cy="160" r="10" fill="#ffffff" opacity="0.6"/>
+  <circle cx="390" cy="130" r="7"  fill="#ffffff" opacity="0.5"/>
+  <circle cx="432" cy="220" r="5"  fill="#ffffff" opacity="0.4"/>
+</svg>
