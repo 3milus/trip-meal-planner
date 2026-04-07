@@ -8,6 +8,7 @@ window.FIREBASE_CONFIG = {
   projectId:         "trip-meal-planner-4a2c3",
   storageBucket:     "trip-meal-planner-4a2c3.firebasestorage.app",
   messagingSenderId: "538355759131",
-  appId:             "1:538355759131:web:86cc52a37251aa434b20be"
-
+  appId:             "1:538355759131:web:86cc52a37251aa434b20be",
+  // Get this from Firebase Console → Project Settings → Cloud Messaging → Web Push certificates → Key pair
+  vapidKey:          "BD-n69pIejKukDQe8a5WVxSnOOCsBQkjbNTAhXxRugXEHRtgB6hwQyVNqqhqM-C7Dt-MFPC3XwTWKjbIki-alKg",
 };

@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs22"
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": ["firebase.json", "functions/**", "node_modules/**", ".git/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  }
+}
