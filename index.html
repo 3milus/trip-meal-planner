@@ -885,12 +885,22 @@ function initials(name) {
 function subscribeToChat(tripId) {
   if (chatUnsub) { chatUnsub(); chatUnsub = null; }
   currentChatId = tripId;
+  const container = document.getElementById('chat-messages');
   chatUnsub = db.collection('trips').doc(tripId).collection('messages')
     .orderBy('timestamp', 'asc')
     .onSnapshot(snap => {
       const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderMessages(msgs);
-    }, err => console.error('Chat error:', err));
+    }, err => {
+      console.error('Chat error:', err);
+      if (container) container.innerHTML = `
+        <div class="chat-empty">
+          <div style="font-size:1.5rem;margin-bottom:8px">⚠️</div>
+          <div style="color:var(--gray-900);font-weight:600;margin-bottom:6px">Could not load messages</div>
+          <div style="font-size:.8rem;color:var(--gray-400);margin-bottom:16px">${h(err.message)}</div>
+          <button class="btn btn-secondary btn-sm" onclick="subscribeToChat('${tripId}')">Retry</button>
+        </div>`;
+    });
 }
 
 async function sendChatMessage() {
